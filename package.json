@@ -1,0 +1,23 @@
+{
+  "name": "backend_sistem_akuntansi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/Server.js",
+  "scripts": {
+    "start": "node src/Server.js",
+    "dev": "nodemon src/Server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mongoose": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

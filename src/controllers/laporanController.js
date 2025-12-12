@@ -36,76 +36,106 @@ export const laporanController = {
   // Buku Besar per Akun
   bukuBesar: async (req, res) => {
     try {
-      const { akunId, startDate, endDate } = req.query;
+      const { startDate, endDate, tipeAkun, kategori } = req.query;
+      
+      // Build filter untuk akun
+      const akunFilter = { aktif: true };
+      if (tipeAkun) akunFilter.tipeAkun = tipeAkun;
+      if (kategori) akunFilter.kategori = kategori;
 
-      if (!akunId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Parameter akunId diperlukan'
-        });
-      }
+      // Get semua akun yang sesuai filter
+      const akuns = await Akun.find(akunFilter).sort({ kodeAkun: 1 });
 
-      const akun = await Akun.findById(akunId);
-      if (!akun) {
-        return res.status(404).json({
-          success: false,
-          message: 'Akun tidak ditemukan'
-        });
-      }
-
-      const filter = {
-        status: 'posted',
-        'items.akun': akunId
-      };
-
+      // Build filter untuk jurnal
+      const jurnalFilter = { status: 'posted' };
       if (startDate || endDate) {
-        filter.tanggal = {};
-        if (startDate) filter.tanggal.$gte = new Date(startDate);
-        if (endDate) filter.tanggal.$lte = new Date(endDate);
+        jurnalFilter.tanggal = {};
+        if (startDate) jurnalFilter.tanggal.$gte = new Date(startDate);
+        if (endDate) jurnalFilter.tanggal.$lte = new Date(endDate);
       }
 
-      const jurnal = await JurnalEntry.find(filter).sort({ tanggal: 1 });
+      // Array untuk menyimpan hasil
+      const bukuBesarData = [];
 
-      // Format data untuk buku besar
-      let saldo = akun.saldoAwal;
-      const transaksi = [];
+      // Loop setiap akun
+      for (let akun of akuns) {
+        // Filter jurnal yang mengandung akun ini
+        const filter = {
+          ...jurnalFilter,
+          'items.akun': akun._id
+        };
 
-      jurnal.forEach(j => {
-        j.items.forEach(item => {
-          if (item.akun.toString() === akunId) {
-            const debit = item.debit || 0;
-            const kredit = item.kredit || 0;
-            
-            // Hitung saldo berdasarkan saldo normal
-            if (akun.saldoNormal === 'debit') {
-              saldo = saldo + debit - kredit;
-            } else {
-              saldo = saldo + kredit - debit;
+        const jurnal = await JurnalEntry.find(filter).sort({ tanggal: 1 });
+
+        // Format data untuk buku besar
+        let saldo = akun.saldoAwal;
+        const transaksi = [];
+        let totalDebit = 0;
+        let totalKredit = 0;
+
+        jurnal.forEach(j => {
+          j.items.forEach(item => {
+            if (item.akun.toString() === akun._id.toString()) {
+              const debit = item.debit || 0;
+              const kredit = item.kredit || 0;
+              
+              totalDebit += debit;
+              totalKredit += kredit;
+              
+              // Hitung saldo berdasarkan saldo normal
+              if (akun.saldoNormal === 'debit') {
+                saldo = saldo + debit - kredit;
+              } else {
+                saldo = saldo + kredit - debit;
+              }
+
+              transaksi.push({
+                tanggal: j.tanggal,
+                nomorJurnal: j.nomorJurnal,
+                deskripsi: j.deskripsi,
+                keterangan: item.keterangan,
+                debit,
+                kredit,
+                saldo
+              });
             }
-
-            transaksi.push({
-              tanggal: j.tanggal,
-              nomorJurnal: j.nomorJurnal,
-              deskripsi: j.deskripsi,
-              keterangan: item.keterangan,
-              debit,
-              kredit,
-              saldo
-            });
-          }
+          });
         });
-      });
+
+        // Hanya masukkan akun yang ada transaksi atau saldo awal tidak 0
+        if (transaksi.length > 0 || akun.saldoAwal !== 0) {
+          bukuBesarData.push({
+            akun: {
+              id: akun._id,
+              kodeAkun: akun.kodeAkun,
+              namaAkun: akun.namaAkun,
+              tipeAkun: akun.tipeAkun,
+              kategori: akun.kategori,
+              saldoAwal: akun.saldoAwal
+            },
+            transaksi,
+            totalDebit,
+            totalKredit,
+            mutasi: totalDebit - totalKredit,
+            saldoAkhir: saldo,
+            jumlahTransaksi: transaksi.length
+          });
+        }
+      }
 
       res.json({
         success: true,
         data: {
-          akun: {
-            kodeAkun: akun.kodeAkun,
-            namaAkun: akun.namaAkun,
-            saldoAwal: akun.saldoAwal
+          periode: {
+            dari: startDate || 'Awal',
+            sampai: endDate || 'Sekarang'
           },
-          transaksi,
-          saldoAkhir: saldo
+          filter: {
+            tipeAkun: tipeAkun || 'Semua',
+            kategori: kategori || 'Semua'
+          },
+          jumlahAkun: bukuBesarData.length,
+          akun: bukuBesarData
         }
       });
     } catch (error) {
@@ -115,6 +145,7 @@ export const laporanController = {
       });
     }
   },
+
 
   // Neraca Saldo
   neracaSaldo: async (req, res) => {

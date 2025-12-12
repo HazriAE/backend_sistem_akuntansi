@@ -1,4 +1,5 @@
 import { JurnalEntry } from "../models/jurnalEntrySchema.js";
+import { Akun } from "../models/akunSchema.js";
 
 export const jurnalController = {
   // Get all jurnal
@@ -57,27 +58,81 @@ export const jurnalController = {
     }
   },
 
-  // Create
   create: async (req, res) => {
     try {
-      // Populate kode dan nama akun dari referensi
-      if (req.body.items && req.body.items.length > 0) {
-        for (let item of req.body.items) {
-          const akun = await Akun.findById(item.akun);
-          if (akun) {
-            item.kodeAkun = akun.kodeAkun;
-            item.namaAkun = akun.namaAkun;
-          }
-        }
+      const { nomorJurnal, tanggal, deskripsi, jenisTransaksi, items, status } = req.body;
+
+      // Validasi items
+      if (!items || items.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Minimal 2 baris transaksi diperlukan'
+        });
       }
 
-      const jurnal = await JurnalEntry.create(req.body);
+      // Populate kode dan nama akun dari referensi & hitung total
+      let totalDebit = 0;
+      let totalKredit = 0;
+      
+      for (let item of items) {
+        const akun = await Akun.findById(item.akun);
+        if (!akun) {
+          return res.status(400).json({
+            success: false,
+            message: `Akun dengan ID ${item.akun} tidak ditemukan`
+          });
+        }
+        
+        item.kodeAkun = akun.kodeAkun;
+        item.namaAkun = akun.namaAkun;
+        
+        // Akumulasi total
+        totalDebit += parseFloat(item.debit) || 0;
+        totalKredit += parseFloat(item.kredit) || 0;
+      }
+
+      // Validasi balance
+      if (totalDebit !== totalKredit) {
+        return res.status(400).json({
+          success: false,
+          message: `Jurnal tidak seimbang. Debit: ${totalDebit}, Kredit: ${totalKredit}`
+        });
+      }
+
+      if (totalDebit === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Total debit dan kredit tidak boleh 0'
+        });
+      }
+
+      // Create jurnal dengan data yang sudah divalidasi
+      const jurnal = await JurnalEntry.create({
+        nomorJurnal,
+        tanggal,
+        deskripsi,
+        jenisTransaksi: jenisTransaksi || 'umum',
+        items,
+        totalDebit,
+        totalKredit,
+        status: status || 'draft',
+        dibuatOleh: req.user?.name || 'system' // Jika ada auth
+      });
+
       res.status(201).json({
         success: true,
         message: 'Jurnal berhasil dibuat',
         data: jurnal
       });
     } catch (error) {
+      // Handle duplicate key error
+      if (error.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nomor jurnal sudah digunakan'
+        });
+      }
+
       res.status(400).json({
         success: false,
         message: error.message
@@ -230,5 +285,41 @@ export const jurnalController = {
         message: error.message
       });
     }
-  }
+  },
+  // Generate nomor jurnal otomatis
+  generateNumber: async (req, res) => {
+    try {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      
+      // Format: JU-YYYYMM-XXXX
+      const prefix = `DES-${year}${month}`;
+      
+      // Cari jurnal terakhir dengan prefix yang sama
+      const lastJurnal = await JurnalEntry.findOne({
+        nomorJurnal: new RegExp(`^${prefix}`)
+      })
+      .sort({ nomorJurnal: -1 })
+      .limit(1);
+
+      let nextNumber = 1;
+      if (lastJurnal) {
+        const lastNumber = parseInt(lastJurnal.nomorJurnal.split('-')[2]);
+        nextNumber = lastNumber + 1;
+      }
+
+      const nomorJurnal = `${prefix}-${String(nextNumber).padStart(4, '0')}`;
+
+      res.json({
+        success: true,
+        nomorJurnal
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 };

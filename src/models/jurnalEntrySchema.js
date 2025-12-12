@@ -76,24 +76,24 @@ const jurnalEntrySchema = new mongoose.Schema({
 
 
 // Validasi untuk memastikan debit = kredit
-jurnalEntrySchema.pre('save', function(next) {
-  let totalDebit = 0;
-  let totalKredit = 0;
+// jurnalEntrySchema.pre('save', function(next) {
+//   let totalDebit = 0;
+//   let totalKredit = 0;
   
-  this.items.forEach(item => {
-    totalDebit += item.debit || 0;
-    totalKredit += item.kredit || 0;
-  });
+//   this.items.forEach(item => {
+//     totalDebit += item.debit || 0;
+//     totalKredit += item.kredit || 0;
+//   });
   
-  this.totalDebit = totalDebit;
-  this.totalKredit = totalKredit;
+//   this.totalDebit = totalDebit;
+//   this.totalKredit = totalKredit;
   
-  if (Math.abs(totalDebit - totalKredit) > 0.01) {
-    next(new Error('Total debit dan kredit harus sama'));
-  }
+//   if (Math.abs(totalDebit - totalKredit) > 0.01) {
+//     next(new Error('Total debit dan kredit harus sama'));
+//   }
   
-  next();
-});
+//   next();
+// });
 
 // Index untuk performa query laporan
 jurnalEntrySchema.index({ tanggal: 1, status: 1 });

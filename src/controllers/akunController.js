@@ -14,7 +14,7 @@ export const akunController = {
       const akun = await Akun.find(filter).sort({ kodeAkun: 1 });
       res.json({
         success: true,
-        data: akun
+        accounts: akun
       });
     } catch (error) {
       res.status(500).json({

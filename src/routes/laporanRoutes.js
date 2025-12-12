@@ -14,6 +14,8 @@ router.get('/laporan/jurnal-umum', laporanController.jurnalUmum);
  * Query params: ?akunId=xxx&startDate=2024-01-01&endDate=2024-12-31
  */
 router.get('/laporan/buku-besar', laporanController.bukuBesar);
+router.get("/laporan/buku-besar-all", laporanController.bukuBesarAll)
+
 
 /**
  * GET /api/laporan/neraca-saldo - Neraca Saldo / Trial Balance
@@ -32,3 +34,9 @@ router.get('/laporan/laba-rugi', laporanController.labaRugi);
  * Query params: ?endDate=2024-12-31
  */
 router.get('/laporan/neraca', laporanController.neraca);
+
+
+router.get('/laporan/perubahan-equitas', laporanController.perubahanEkuitas);
+
+
+router.get('/laporan/arus-kas', laporanController.arusKas);

@@ -8,6 +8,7 @@ import getCorsConfig from "./config/cors.js";
 import { akunRouter } from "./routes/akunRoutes.js";
 import { jurnalRouter } from "./routes/jurnalRoutes.js";
 import { router as laporanRouter } from "./routes/laporanRoutes.js";
+import salesRoutes from "./routes/salesRoutes.js"
 
 const app = express()
 
@@ -20,6 +21,7 @@ app.use("/api", testing)
 app.use("/api", akunRouter)
 app.use("/api", jurnalRouter)
 app.use("/api", laporanRouter)
+app.use("/api", salesRoutes)
 
 
 // if (process.env.NODE_ENV === 'development') {

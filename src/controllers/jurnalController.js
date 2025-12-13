@@ -294,7 +294,7 @@ export const jurnalController = {
       const month = String(today.getMonth() + 1).padStart(2, '0');
       
       // Format: JU-YYYYMM-XXXX
-      const prefix = `DES-${year}${month}`;
+      const prefix = `JU-${year}${month}`;
       
       // Cari jurnal terakhir dengan prefix yang sama
       const lastJurnal = await JurnalEntry.findOne({

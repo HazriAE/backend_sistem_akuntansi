@@ -19,7 +19,7 @@ const akunSchema = new mongoose.Schema({
   },
   kategori: {
     type: String,
-    enum: ['kas', 'bank', 'piutang', 'persediaan', 'aset_tetap', 'hutang', 'modal', 'penjualan', 'pembelian', 'biaya_operasional', 'lainnya'],
+    enum: ['kas', 'bank', 'piutang', 'persediaan', 'aset_tetap', 'hutang', 'modal', 'beban_pokok_penjualan', 'penjualan', 'pembelian', 'biaya_operasional', 'lainnya'],
     lowercase: true
   },
   saldoNormal: {

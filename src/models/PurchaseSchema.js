@@ -178,39 +178,37 @@ const purchaseSchema = new mongoose.Schema({
 });
 
 // Pre-save: Calculate totals
-purchaseSchema.pre('save', function(next) {
-  // Calculate subtotal
-  this.subtotal = this.items.reduce((sum, item) => {
-    return sum + (item.quantity * item.unitPrice);
-  }, 0);
-  
-  // Calculate discount
-  this.discountTotal = this.items.reduce((sum, item) => {
-    return sum + (item.discountAmount || 0);
-  }, 0);
-  
-  // Subtotal after discount
-  this.subtotalAfterDiscount = this.subtotal - this.discountTotal;
-  
-  // Calculate tax
-  this.taxAmount = (this.subtotalAfterDiscount * this.taxRate) / 100;
-  
-  // Calculate total
-  this.total = this.subtotalAfterDiscount + this.taxAmount;
-  
-  // Calculate remaining balance
-  this.remainingBalance = this.total - this.paidAmount;
-  
-  // Update payment status
-  if (this.paidAmount === 0) {
-    this.paymentStatus = 'unpaid';
-  } else if (this.paidAmount >= this.total) {
-    this.paymentStatus = 'paid';
-  } else {
-    this.paymentStatus = 'partial';
-  }
-  
-  next();
+purchaseSchema.pre('save', async function () {
+  // Hitung subtotal (jumlah kuantitas × harga satuan)
+    this.subtotal = this.items.reduce((sum, item) => {
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
+
+    // Hitung total diskon
+    this.discountTotal = this.items.reduce((sum, item) => {
+      return sum + (item.discountAmount || 0);
+    }, 0);
+
+    // Subtotal setelah diskon
+    this.subtotalAfterDiscount = this.subtotal - this.discountTotal;
+
+    // Hitung pajak
+    this.taxAmount = (this.subtotalAfterDiscount * this.taxRate) / 100;
+
+    // Hitung total transaksi
+    this.total = this.subtotalAfterDiscount + this.taxAmount;
+
+    // Hitung sisa pembayaran
+    this.remainingBalance = this.total - (this.paidAmount || 0);
+
+    // Tentukan status pembayaran
+    if (!this.paidAmount || this.paidAmount === 0) {
+      this.paymentStatus = 'unpaid';
+    } else if (this.paidAmount >= this.total) {
+      this.paymentStatus = 'paid';
+    } else {
+      this.paymentStatus = 'partial';
+    }
 });
 
 // Index

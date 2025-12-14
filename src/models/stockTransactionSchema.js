@@ -79,11 +79,10 @@ stockTransactionSchema.index({ type: 1, createdAt: -1 });
 stockTransactionSchema.index({ item: 1, type: 1 });
 
 // Pre-save: Calculate total cost
-stockTransactionSchema.pre('save', function(next) {
+stockTransactionSchema.pre('save', async function() {
   if (this.unitCost && this.quantity) {
     this.totalCost = Math.abs(this.quantity) * this.unitCost;
   }
-  next();
 });
 
 // Static method untuk get stock history

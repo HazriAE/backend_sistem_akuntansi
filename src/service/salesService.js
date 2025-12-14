@@ -10,7 +10,7 @@ import { Item } from '../models/Item.js';
 
 export const salesService = {
   /**
-   * Create new sales invoice
+   * Create new sales invoice (Draft)
    */
   createSales: async (data, createdBy = 'system') => {
     // Validate customer
@@ -62,7 +62,14 @@ export const salesService = {
   },
 
   /**
-   * Approve sales (will reduce stock)
+   * Approve sales (Metode Perpetual)
+   * 
+   * Flow:
+   * 1. Validasi status & stock
+   * 2. Hitung total HPP
+   * 3. Generate jurnal entry (Piutang/Penjualan + HPP/Persediaan)
+   * 4. Kurangi stock fisik via inventoryService
+   * 5. Update status sales
    */
   approveSales: async (salesId, approvedBy = 'system') => {
     const sales = await Sales.findById(salesId);
@@ -84,16 +91,34 @@ export const salesService = {
       }
     }
 
-    // Reduce stock for each item
+    // Calculate total HPP/COGS dan simpan detail per item
+    let totalHPP = 0;
+    const itemsWithCost = [];
+    
     for (let sItem of sales.items) {
-      // Get item cost for COGS
       const item = await Item.findById(sItem.item);
       const unitCost = item.costPrice;
+      const totalCost = unitCost * sItem.quantity;
+      
+      totalHPP += totalCost;
+      itemsWithCost.push({
+        itemId: sItem.item,
+        quantity: sItem.quantity,
+        unitCost,
+        totalCost,
+        itemName: sItem.itemName
+      });
+    }
 
+    // 1. Generate jurnal entry DULU (sebelum update stock)
+    const jurnal = await salesService.generateJurnalEntry(sales, totalHPP);
+
+    // 2. Kurangi stock fisik (inventory service hanya update stock, tidak buat jurnal)
+    for (let itemData of itemsWithCost) {
       await inventoryService.reduceStock(
-        sItem.item,
-        sItem.quantity,
-        unitCost, // Use cost price for COGS
+        itemData.itemId,
+        itemData.quantity,
+        itemData.unitCost,
         {
           module: 'sales',
           id: sales._id,
@@ -103,16 +128,108 @@ export const salesService = {
       );
     }
 
-    // Generate jurnal entry
-    await salesService.generateJurnalEntry(sales);
-
-    // Update sales status
+    // 3. Update sales status
     sales.status = 'approved';
     sales.approvedBy = approvedBy;
     sales.approvedAt = new Date();
+    sales.jurnalEntry = jurnal._id;
     await sales.save();
 
     return sales;
+  },
+
+  /**
+   * Generate jurnal entry untuk penjualan (Metode Perpetual)
+   * 
+   * Jurnal yang dibuat (4 baris):
+   * 
+   * 1. Dr. Piutang Usaha (1-1103)          xxx
+   *    Cr. Penjualan Bersih (4-1001)           xxx
+   *    (Mencatat pendapatan penjualan)
+   * 
+   * 2. Dr. Beban Pokok Penjualan (5-1001)  xxx
+   *    Cr. Persediaan (1-1105)                 xxx
+   *    (Mencatat HPP dan pengurangan persediaan)
+   */
+  generateJurnalEntry: async (sales, totalHPP) => {
+    // Find required accounts
+    const piutangAkun = await Akun.findOne({ 
+      kodeAkun: '1-1103',  // Piutang Usaha - Pihak Ketiga
+      aktif: true 
+    });
+
+    const penjualanAkun = await Akun.findOne({ 
+      kodeAkun: '4-1001',  // Penjualan Bersih
+      aktif: true 
+    });
+
+    const hppAkun = await Akun.findOne({ 
+      kodeAkun: '5-1001',  // Beban Pokok Penjualan
+      aktif: true 
+    });
+
+    const persediaanAkun = await Akun.findOne({ 
+      kodeAkun: '1-1105',  // Persediaan
+      aktif: true 
+    });
+
+    if (!piutangAkun || !penjualanAkun || !hppAkun || !persediaanAkun) {
+      throw new Error('Required accounts not found. Please ensure accounts 1-1103, 4-1001, 5-1001, and 1-1105 exist.');
+    }
+
+    // Create journal entry dengan 4 baris (2 pasang jurnal sekaligus)
+    const jurnalData = {
+      nomorJurnal: `JRN-SAL-${sales.invoiceNumber}`,
+      tanggal: sales.invoiceDate,
+      deskripsi: `Penjualan kepada ${sales.customerName} - Invoice ${sales.invoiceNumber}`,
+      jenisTransaksi: 'penjualan',
+      referensi: {
+        tipe: 'kontak',
+        id: sales.customer
+      },
+      items: [
+        // === JURNAL 1: Mencatat Penjualan (Revenue Recognition) ===
+        {
+          akun: piutangAkun._id,
+          kodeAkun: piutangAkun.kodeAkun,
+          namaAkun: piutangAkun.namaAkun,
+          debit: sales.total,
+          kredit: 0,
+          keterangan: `Piutang ${sales.customerName} - ${sales.invoiceNumber}`
+        },
+        {
+          akun: penjualanAkun._id,
+          kodeAkun: penjualanAkun.kodeAkun,
+          namaAkun: penjualanAkun.namaAkun,
+          debit: 0,
+          kredit: sales.total,
+          keterangan: `Penjualan kepada ${sales.customerName}`
+        },
+        
+        // === JURNAL 2: Mencatat HPP dan Pengurangan Persediaan (COGS) ===
+        {
+          akun: hppAkun._id,
+          kodeAkun: hppAkun.kodeAkun,
+          namaAkun: hppAkun.namaAkun,
+          debit: totalHPP,
+          kredit: 0,
+          keterangan: `HPP penjualan - ${sales.invoiceNumber}`
+        },
+        {
+          akun: persediaanAkun._id,
+          kodeAkun: persediaanAkun.kodeAkun,
+          namaAkun: persediaanAkun.namaAkun,
+          debit: 0,
+          kredit: totalHPP,
+          keterangan: `Pengurangan persediaan - ${sales.invoiceNumber}`
+        }
+      ],
+      status: 'posted',
+      dibuatOleh: sales.createdBy
+    };
+
+    const jurnal = await JurnalEntry.create(jurnalData);
+    return jurnal;
   },
 
   /**
@@ -137,7 +254,12 @@ export const salesService = {
   },
 
   /**
-   * Cancel sales (will restore stock)
+   * Cancel sales (Metode Perpetual)
+   * 
+   * Flow:
+   * 1. Validasi (tidak bisa cancel yang sudah paid)
+   * 2. Jika sudah approved: buat jurnal pembalik + restore stock
+   * 3. Update status cancelled
    */
   cancelSales: async (salesId, reason, cancelledBy = 'system') => {
     const sales = await Sales.findById(salesId);
@@ -148,35 +270,45 @@ export const salesService = {
     }
 
     if (sales.paymentStatus === 'paid') {
-      throw new Error('Cannot cancel paid sales');
+      throw new Error('Cannot cancel paid sales. Please create sales return instead.');
     }
 
-    // If sales was approved, restore the stock
+    // If sales was approved, reverse the entries
     if (sales.status === 'approved' || sales.status === 'completed') {
+      // Calculate total HPP for reversal
+      let totalHPP = 0;
+      const itemsToRestore = [];
+
       for (let sItem of sales.items) {
         const item = await Item.findById(sItem.item);
         const unitCost = item.costPrice;
-
-        await inventoryService.addStock(
-          sItem.item,
-          sItem.quantity,
+        const totalCost = unitCost * sItem.quantity;
+        
+        totalHPP += totalCost;
+        itemsToRestore.push({
+          itemId: sItem.item,
+          quantity: sItem.quantity,
           unitCost,
+          itemName: sItem.itemName
+        });
+      }
+
+      // 1. Create reversing journal entry
+      await salesService.createReversingJournal(sales, totalHPP, reason, cancelledBy);
+
+      // 2. Restore stock fisik
+      for (let itemData of itemsToRestore) {
+        await inventoryService.addStock(
+          itemData.itemId,
+          itemData.quantity,
+          itemData.unitCost,
           {
-            module: 'sales_return',
+            module: 'sales_cancellation',
             id: sales._id,
             number: sales.invoiceNumber
           },
           `Sales Cancelled: ${sales.invoiceNumber} - ${reason}`
         );
-      }
-
-      // Void jurnal entry if exists
-      if (sales.jurnalEntry) {
-        const jurnal = await JurnalEntry.findById(sales.jurnalEntry);
-        if (jurnal && jurnal.status === 'posted') {
-          jurnal.status = 'void';
-          await jurnal.save();
-        }
       }
     }
 
@@ -188,6 +320,80 @@ export const salesService = {
     await sales.save();
 
     return sales;
+  },
+
+  /**
+   * Create reversing journal for cancelled sales
+   * 
+   * Jurnal pembalik (kebalikan dari jurnal asli):
+   * Dr. Penjualan Bersih        xxx
+   *     Cr. Piutang Usaha            xxx
+   * 
+   * Dr. Persediaan              xxx
+   *     Cr. Beban Pokok Penjualan    xxx
+   */
+  createReversingJournal: async (sales, totalHPP, reason, cancelledBy) => {
+    const piutangAkun = await Akun.findOne({ kodeAkun: '1-1103', aktif: true });
+    const penjualanAkun = await Akun.findOne({ kodeAkun: '4-1001', aktif: true });
+    const hppAkun = await Akun.findOne({ kodeAkun: '5-1001', aktif: true });
+    const persediaanAkun = await Akun.findOne({ kodeAkun: '1-1105', aktif: true });
+
+    if (!piutangAkun || !penjualanAkun || !hppAkun || !persediaanAkun) {
+      throw new Error('Required accounts not found for reversing entry');
+    }
+
+    // Jurnal pembalik: posisi Debit-Kredit dibalik
+    const jurnalData = {
+      nomorJurnal: `JRN-SAL-CANCEL-${sales.invoiceNumber}`,
+      tanggal: new Date(),
+      deskripsi: `Pembatalan penjualan - ${sales.invoiceNumber} - ${reason}`,
+      jenisTransaksi: 'penjualan_batal',
+      referensi: {
+        tipe: 'kontak',
+        id: sales.customer
+      },
+      items: [
+        // Pembalik jurnal penjualan (posisi D-K dibalik)
+        {
+          akun: penjualanAkun._id,
+          kodeAkun: penjualanAkun.kodeAkun,
+          namaAkun: penjualanAkun.namaAkun,
+          debit: sales.total,  // Tadinya Kredit, jadi Debit
+          kredit: 0,
+          keterangan: `Pembatalan penjualan - ${sales.invoiceNumber}`
+        },
+        {
+          akun: piutangAkun._id,
+          kodeAkun: piutangAkun.kodeAkun,
+          namaAkun: piutangAkun.namaAkun,
+          debit: 0,
+          kredit: sales.total,  // Tadinya Debit, jadi Kredit
+          keterangan: `Pembatalan piutang - ${sales.invoiceNumber}`
+        },
+        
+        // Pembalik jurnal HPP (posisi D-K dibalik)
+        {
+          akun: persediaanAkun._id,
+          kodeAkun: persediaanAkun.kodeAkun,
+          namaAkun: persediaanAkun.namaAkun,
+          debit: totalHPP,  // Tadinya Kredit, jadi Debit
+          kredit: 0,
+          keterangan: `Pengembalian persediaan - ${sales.invoiceNumber}`
+        },
+        {
+          akun: hppAkun._id,
+          kodeAkun: hppAkun.kodeAkun,
+          namaAkun: hppAkun.namaAkun,
+          debit: 0,
+          kredit: totalHPP,  // Tadinya Debit, jadi Kredit
+          keterangan: `Pembalik HPP - ${sales.invoiceNumber}`
+        }
+      ],
+      status: 'posted',
+      dibuatOleh: cancelledBy
+    };
+
+    return await JurnalEntry.create(jurnalData);
   },
 
   /**
@@ -256,74 +462,12 @@ export const salesService = {
   },
 
   /**
-   * Generate jurnal entry from sales
-   */
-  generateJurnalEntry: async (sales) => {
-    // Find required accounts
-    const piutangAkun = await Akun.findOne({ 
-      kodeAkun: { $regex: '^1-11' }, 
-      kategori: 'piutang',
-      aktif: true 
-    });
-
-    const penjualanAkun = await Akun.findOne({ 
-      kodeAkun: { $regex: '^4-' }, 
-      kategori: 'penjualan',
-      aktif: true 
-    });
-
-    if (!piutangAkun || !penjualanAkun) {
-      throw new Error('Required accounts not found for journal entry');
-    }
-
-    // Create journal entry
-    const jurnalData = {
-      nomorJurnal: `JRN-SAL-${sales.invoiceNumber}`,
-      tanggal: sales.invoiceDate,
-      deskripsi: `Penjualan kepada ${sales.customerName} - ${sales.invoiceNumber}`,
-      jenisTransaksi: 'penjualan',
-      referensi: {
-        tipe: 'kontak',
-        id: sales.customer
-      },
-      items: [
-        {
-          akun: piutangAkun._id,
-          kodeAkun: piutangAkun.kodeAkun,
-          namaAkun: piutangAkun.namaAkun,
-          debit: sales.total,
-          kredit: 0,
-          keterangan: `Piutang - ${sales.invoiceNumber}`
-        },
-        {
-          akun: penjualanAkun._id,
-          kodeAkun: penjualanAkun.kodeAkun,
-          namaAkun: penjualanAkun.namaAkun,
-          debit: 0,
-          kredit: sales.total,
-          keterangan: `Penjualan - ${sales.customerName}`
-        }
-      ],
-      status: 'posted',
-      dibuatOleh: sales.createdBy
-    };
-
-    const jurnal = await JurnalEntry.create(jurnalData);
-
-    // Link jurnal to sales
-    sales.jurnalEntry = jurnal._id;
-    await sales.save();
-
-    return jurnal;
-  },
-
-  /**
    * Get sales by ID
    */
   getSalesById: async (salesId) => {
     const sales = await Sales.findById(salesId)
       .populate('customer', 'kode nama alamat noHp email')
-      .populate('items.item', 'sku name unit')
+      .populate('items.item', 'sku name unit costPrice')
       .populate('jurnalEntry');
 
     if (!sales) throw new Error('Sales not found');

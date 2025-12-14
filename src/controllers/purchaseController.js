@@ -7,7 +7,7 @@ const purchaseController = {
    * GET /api/purchase
    * Get all purchases with optional filters
    */
-  getAll: async (req, res) => {
+  getAll: async (req, res, next) => {
     try {
       const { supplier, status, paymentStatus, startDate, endDate } = req.query;
 
@@ -26,10 +26,7 @@ const purchaseController = {
         data: purchases
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
+      next(error); // Pass error to error handling middleware
     }
   },
 
@@ -37,7 +34,7 @@ const purchaseController = {
    * GET /api/purchase/:id
    * Get purchase by ID
    */
-  getById: async (req, res) => {
+  getById: async (req, res, next) => {
     try {
       const purchase = await purchaseService.getPurchaseById(req.params.id);
 
@@ -46,11 +43,13 @@ const purchaseController = {
         data: purchase
       });
     } catch (error) {
-      const statusCode = error.message === 'Purchase not found' ? 404 : 500;
-      res.status(statusCode).json({
-        success: false,
-        message: error.message
-      });
+      if (error.message === 'Purchase not found') {
+        return res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      }
+      next(error);
     }
   },
 
@@ -58,7 +57,7 @@ const purchaseController = {
    * POST /api/purchase
    * Create new purchase (draft)
    */
-  create: async (req, res) => {
+  create: async (req, res, next) => {
     try {
       const createdBy = req.body.createdBy || req.user?.username || 'system';
 
@@ -81,7 +80,7 @@ const purchaseController = {
    * PUT /api/purchase/:id
    * Update purchase (only draft)
    */
-  update: async (req, res) => {
+  update: async (req, res, next) => {
     try {
       const purchase = await purchaseService.updatePurchase(req.params.id, req.body);
 
@@ -103,7 +102,7 @@ const purchaseController = {
    * DELETE /api/purchase/:id
    * Delete purchase (only draft)
    */
-  delete: async (req, res) => {
+  delete: async (req, res, next) => {
     try {
       const result = await purchaseService.deletePurchase(req.params.id);
 
@@ -124,7 +123,7 @@ const purchaseController = {
    * POST /api/purchase/:id/approve
    * Approve purchase (add stock + generate jurnal)
    */
-  approve: async (req, res) => {
+  approve: async (req, res, next) => {
     try {
       const approvedBy = req.body.approvedBy || req.user?.username || 'system';
 
@@ -142,13 +141,15 @@ const purchaseController = {
         message: error.message
       });
     }
+
+    next()
   },
 
   /**
    * POST /api/purchase/:id/receive
    * Mark purchase as received
    */
-  receive: async (req, res) => {
+  receive: async (req, res, next) => {
     try {
       const receivedBy = req.body.receivedBy || req.user?.username || 'system';
 
@@ -172,7 +173,7 @@ const purchaseController = {
    * POST /api/purchase/:id/cancel
    * Cancel purchase (reverse stock if approved)
    */
-  cancel: async (req, res) => {
+  cancel: async (req, res, next) => {
     try {
       const { reason } = req.body;
 
@@ -209,7 +210,7 @@ const purchaseController = {
    * GET /api/purchase/outstanding
    * Get outstanding purchases (unpaid/partial)
    */
-  getOutstanding: async (req, res) => {
+  getOutstanding: async (req, res, next) => {
     try {
       const { supplierId } = req.query;
 
@@ -225,10 +226,7 @@ const purchaseController = {
         data: purchases
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
+      next(error);
     }
   },
 
@@ -236,7 +234,7 @@ const purchaseController = {
    * GET /api/purchase/aging-report
    * Get accounts payable aging report
    */
-  getAgingReport: async (req, res) => {
+  getAgingReport: async (req, res, next) => {
     try {
       const report = await purchaseService.getAgingReport();
 
@@ -245,10 +243,7 @@ const purchaseController = {
         data: report
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
+      next(error);
     }
   }
 };

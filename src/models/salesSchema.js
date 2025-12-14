@@ -185,7 +185,7 @@ const salesSchema = new mongoose.Schema({
 });
 
 // Pre-save: Calculate totals
-salesSchema.pre('save', function(next) {
+salesSchema.pre('save', async function() {
   // Calculate subtotal
   this.subtotal = this.items.reduce((sum, item) => {
     return sum + (item.quantity * item.unitPrice);
@@ -217,7 +217,6 @@ salesSchema.pre('save', function(next) {
     this.paymentStatus = 'partial';
   }
   
-  next();
 });
 
 // Index

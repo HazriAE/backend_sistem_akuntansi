@@ -11,6 +11,7 @@ import { router as laporanRouter } from "./routes/laporanRoutes.js";
 import salesRoutes from "./routes/salesRoutes.js"
 import purchaseRoutes from "./routes/purchaseRoutes.js"
 import supplierRoutes from "./routes/supplierRoutes.js"
+import itemRoutes from "./routes/inventoryRoutes.js"
 
 const app = express()
 
@@ -26,6 +27,7 @@ app.use("/api", laporanRouter)
 app.use("/api", salesRoutes)
 app.use("/api", purchaseRoutes)
 app.use("/api", supplierRoutes)
+app.use("/api", itemRoutes)
 
 
 // if (process.env.NODE_ENV === 'development') {

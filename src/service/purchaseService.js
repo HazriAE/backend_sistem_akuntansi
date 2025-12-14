@@ -1,5 +1,5 @@
 import { Purchase } from '../models/PurchaseSchema.js';
-import { Item } from '../models/item.js';
+import { Item } from '../models/Item.js';
 import { Kontak } from '../models/kontakSchema.js';
 import { JurnalEntry } from '../models/jurnalEntrySchema.js';
 import { inventoryService } from './inventoryService.js';

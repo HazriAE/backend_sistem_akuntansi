@@ -1,3 +1,4 @@
+import { labaRugiMultipleStepController } from "../controllers/labaRugiMultipleStepController.js";
 import { laporanController } from "../controllers/laporanController.js"
 import express from "express"
 
@@ -28,6 +29,9 @@ router.get('/laporan/neraca-saldo', laporanController.neracaSaldo);
  * Query params: ?startDate=2024-01-01&endDate=2024-12-31
  */
 router.get('/laporan/laba-rugi', laporanController.labaRugi);
+
+router.get('/laporan/laba-rugi-multiple-step', labaRugiMultipleStepController);
+
 
 /**
  * GET /api/laporan/neraca - Neraca / Balance Sheet

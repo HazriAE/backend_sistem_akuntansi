@@ -1,31 +1,93 @@
 // ==================== FILE: src/routes/salesRoutes.js ====================
 
 import express from 'express';
-import { salesController } from '../controllers/salesController.js';
-// import { authenticate, authorize } from '../middleware/auth.js'; // Uncomment when auth ready
+import salesController from '../controllers/salesController.js';
 
 const router = express.Router();
 
-// Create & List
-router.post('/', salesController.createSales);
-router.get('/', salesController.getAllSales);
+// ==================== SALES ROUTES ====================
 
-// Reports
-router.get('/outstanding', salesController.getOutstandingSales);
-router.get('/aging-report', salesController.getAgingReport);
-router.get('/performance', salesController.getPerformanceReport);
+/**
+ * GET /api/sales
+ * Get all sales invoices
+ * Query params: ?customer=xxx&status=draft&paymentStatus=unpaid&startDate=2024-01-01&endDate=2024-12-31
+ */
+router.get('/sales', salesController.getAll);
 
-// Single sales operations
-router.get('/:id', salesController.getSalesById);
-router.put('/:id', salesController.updateSales);
-router.delete('/:id', salesController.deleteSales);
+/**
+ * GET /api/sales/outstanding
+ * Get outstanding sales (unpaid/partial)
+ * Query params: ?customerId=xxx
+ * 
+ * NOTE: Must be before /:id to avoid route conflict
+ */
+router.get('/sales/outstanding', salesController.getOutstanding);
 
-// Status changes (add authorize middleware for production)
-router.put('/:id/approve', salesController.approveSales);
-router.put('/:id/complete', salesController.completeSales);
-router.put('/:id/cancel', salesController.cancelSales);
+/**
+ * GET /api/sales/aging-report
+ * Get accounts receivable aging report
+ * 
+ * NOTE: Must be before /:id to avoid route conflict
+ */
+router.get('/sales/aging-report', salesController.getAgingReport);
 
-// Payment
-router.post('/:id/payment', salesController.recordPayment);
+/**
+ * GET /api/sales/:id
+ * Get sales by ID
+ */
+router.get('/sales/:id', salesController.getById);
+
+/**
+ * POST /api/sales
+ * Create new sales invoice (draft)
+ * Body: {
+ *   customer: ObjectId,
+ *   invoiceDate: Date,
+ *   dueDate: Date,
+ *   items: [{
+ *     item: ObjectId,
+ *     quantity: Number,
+ *     unitPrice: Number,
+ *     discountAmount: Number
+ *   }],
+ *   notes: String,
+ *   terms: String
+ * }
+ */
+router.post('/sales', salesController.create);
+
+/**
+ * PUT /api/sales/:id
+ * Update sales invoice (only draft)
+ * Body: Same as create
+ */
+router.put('/sales/:id', salesController.update);
+
+/**
+ * DELETE /api/sales/:id
+ * Delete sales invoice (only draft)
+ */
+router.delete('/sales/:id', salesController.delete);
+
+/**
+ * POST /api/sales/:id/approve
+ * Approve sales (reduce stock + generate jurnal)
+ * Body: { approvedBy: String (optional) }
+ */
+router.post('/sales/:id/approve', salesController.approve);
+
+/**
+ * POST /api/sales/:id/complete
+ * Mark sales as completed (must be fully paid)
+ * Body: none
+ */
+router.post('/sales/:id/complete', salesController.complete);
+
+/**
+ * POST /api/sales/:id/cancel
+ * Cancel sales (restore stock if approved)
+ * Body: { reason: String (required), cancelledBy: String (optional) }
+ */
+router.post('/sales/:id/cancel', salesController.cancel);
 
 export default router;

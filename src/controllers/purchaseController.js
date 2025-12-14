@@ -1,29 +1,29 @@
-// ==================== FILE: src/controllers/salesController.js ====================
+// ==================== FILE: src/controllers/purchaseController.js ====================
 
-import { salesService } from "../service/salesService.js";
+import { purchaseService } from "../service/purchaseService.js";
 
-const salesController = {
+const purchaseController = {
   /**
-   * GET /api/sales
-   * Get all sales with optional filters
+   * GET /api/purchase
+   * Get all purchases with optional filters
    */
   getAll: async (req, res) => {
     try {
-      const { customer, status, paymentStatus, startDate, endDate } = req.query;
+      const { supplier, status, paymentStatus, startDate, endDate } = req.query;
 
       const filters = {};
-      if (customer) filters.customer = customer;
+      if (supplier) filters.supplier = supplier;
       if (status) filters.status = status;
       if (paymentStatus) filters.paymentStatus = paymentStatus;
       if (startDate) filters.startDate = startDate;
       if (endDate) filters.endDate = endDate;
 
-      const sales = await salesService.getAllSales(filters);
+      const purchases = await purchaseService.getAllPurchases(filters);
 
       res.json({
         success: true,
-        count: sales.length,
-        data: sales
+        count: purchases.length,
+        data: purchases
       });
     } catch (error) {
       res.status(500).json({
@@ -34,19 +34,19 @@ const salesController = {
   },
 
   /**
-   * GET /api/sales/:id
-   * Get sales by ID
+   * GET /api/purchase/:id
+   * Get purchase by ID
    */
   getById: async (req, res) => {
     try {
-      const sales = await salesService.getSalesById(req.params.id);
+      const purchase = await purchaseService.getPurchaseById(req.params.id);
 
       res.json({
         success: true,
-        data: sales
+        data: purchase
       });
     } catch (error) {
-      const statusCode = error.message === 'Sales not found' ? 404 : 500;
+      const statusCode = error.message === 'Purchase not found' ? 404 : 500;
       res.status(statusCode).json({
         success: false,
         message: error.message
@@ -55,19 +55,19 @@ const salesController = {
   },
 
   /**
-   * POST /api/sales
-   * Create new sales invoice (draft)
+   * POST /api/purchase
+   * Create new purchase (draft)
    */
   create: async (req, res) => {
     try {
       const createdBy = req.body.createdBy || req.user?.username || 'system';
 
-      const sales = await salesService.createSales(req.body, createdBy);
+      const purchase = await purchaseService.createPurchase(req.body, createdBy);
 
       res.status(201).json({
         success: true,
-        message: 'Sales invoice created successfully',
-        data: sales
+        message: 'Purchase created successfully',
+        data: purchase
       });
     } catch (error) {
       res.status(400).json({
@@ -78,17 +78,17 @@ const salesController = {
   },
 
   /**
-   * PUT /api/sales/:id
-   * Update sales (only draft)
+   * PUT /api/purchase/:id
+   * Update purchase (only draft)
    */
   update: async (req, res) => {
     try {
-      const sales = await salesService.updateSales(req.params.id, req.body);
+      const purchase = await purchaseService.updatePurchase(req.params.id, req.body);
 
       res.json({
         success: true,
-        message: 'Sales invoice updated successfully',
-        data: sales
+        message: 'Purchase updated successfully',
+        data: purchase
       });
     } catch (error) {
       const statusCode = error.message.includes('not found') ? 404 : 400;
@@ -100,12 +100,12 @@ const salesController = {
   },
 
   /**
-   * DELETE /api/sales/:id
-   * Delete sales (only draft)
+   * DELETE /api/purchase/:id
+   * Delete purchase (only draft)
    */
   delete: async (req, res) => {
     try {
-      const result = await salesService.deleteSales(req.params.id);
+      const result = await purchaseService.deletePurchase(req.params.id);
 
       res.json({
         success: true,
@@ -121,19 +121,19 @@ const salesController = {
   },
 
   /**
-   * POST /api/sales/:id/approve
-   * Approve sales (reduce stock + generate jurnal)
+   * POST /api/purchase/:id/approve
+   * Approve purchase (add stock + generate jurnal)
    */
   approve: async (req, res) => {
     try {
       const approvedBy = req.body.approvedBy || req.user?.username || 'system';
 
-      const sales = await salesService.approveSales(req.params.id, approvedBy);
+      const purchase = await purchaseService.approvePurchase(req.params.id, approvedBy);
 
       res.json({
         success: true,
-        message: 'Sales invoice approved successfully. Stock has been reduced and journal entry created.',
-        data: sales
+        message: 'Purchase approved successfully. Stock has been added and journal entry created.',
+        data: purchase
       });
     } catch (error) {
       const statusCode = error.message.includes('not found') ? 404 : 400;
@@ -145,17 +145,19 @@ const salesController = {
   },
 
   /**
-   * POST /api/sales/:id/complete
-   * Mark sales as completed (must be fully paid)
+   * POST /api/purchase/:id/receive
+   * Mark purchase as received
    */
-  complete: async (req, res) => {
+  receive: async (req, res) => {
     try {
-      const sales = await salesService.completeSales(req.params.id);
+      const receivedBy = req.body.receivedBy || req.user?.username || 'system';
+
+      const purchase = await purchaseService.receivePurchase(req.params.id, receivedBy);
 
       res.json({
         success: true,
-        message: 'Sales invoice marked as completed',
-        data: sales
+        message: 'Purchase marked as received',
+        data: purchase
       });
     } catch (error) {
       const statusCode = error.message.includes('not found') ? 404 : 400;
@@ -167,8 +169,8 @@ const salesController = {
   },
 
   /**
-   * POST /api/sales/:id/cancel
-   * Cancel sales (restore stock if approved)
+   * POST /api/purchase/:id/cancel
+   * Cancel purchase (reverse stock if approved)
    */
   cancel: async (req, res) => {
     try {
@@ -183,7 +185,7 @@ const salesController = {
 
       const cancelledBy = req.body.cancelledBy || req.user?.username || 'system';
 
-      const sales = await salesService.cancelSales(
+      const purchase = await purchaseService.cancelPurchase(
         req.params.id,
         reason,
         cancelledBy
@@ -191,8 +193,8 @@ const salesController = {
 
       res.json({
         success: true,
-        message: 'Sales invoice cancelled successfully',
-        data: sales
+        message: 'Purchase cancelled successfully',
+        data: purchase
       });
     } catch (error) {
       const statusCode = error.message.includes('not found') ? 404 : 400;
@@ -204,23 +206,23 @@ const salesController = {
   },
 
   /**
-   * GET /api/sales/outstanding
-   * Get outstanding sales (unpaid/partial)
+   * GET /api/purchase/outstanding
+   * Get outstanding purchases (unpaid/partial)
    */
   getOutstanding: async (req, res) => {
     try {
-      const { customerId } = req.query;
+      const { supplierId } = req.query;
 
-      const sales = await salesService.getOutstandingSales(customerId);
+      const purchases = await purchaseService.getOutstandingPurchases(supplierId);
 
       // Calculate totals
-      const totalOutstanding = sales.reduce((sum, s) => sum + s.remainingBalance, 0);
+      const totalOutstanding = purchases.reduce((sum, p) => sum + p.remainingBalance, 0);
 
       res.json({
         success: true,
-        count: sales.length,
+        count: purchases.length,
         totalOutstanding,
-        data: sales
+        data: purchases
       });
     } catch (error) {
       res.status(500).json({
@@ -231,12 +233,12 @@ const salesController = {
   },
 
   /**
-   * GET /api/sales/aging-report
-   * Get accounts receivable aging report
+   * GET /api/purchase/aging-report
+   * Get accounts payable aging report
    */
   getAgingReport: async (req, res) => {
     try {
-      const report = await salesService.getAgingReport();
+      const report = await purchaseService.getAgingReport();
 
       res.json({
         success: true,
@@ -251,4 +253,4 @@ const salesController = {
   }
 };
 
-export default salesController
+export default purchaseController;

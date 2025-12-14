@@ -2,11 +2,11 @@
 
 import { Akun } from '../models/akunSchema.js';
 import { Sales } from '../models/salesSchema.js';
-import { Item } from '../models/item.js';
 import { Kontak } from '../models/kontakSchema.js';
 import { JurnalEntry } from '../models/jurnalEntrySchema.js';
 import { inventoryService } from './inventoryService.js';
 import { generateInvoiceNumber } from '../utils/numberGenerator.js';
+import { Item } from '../models/Item.js';
 
 export const salesService = {
   /**

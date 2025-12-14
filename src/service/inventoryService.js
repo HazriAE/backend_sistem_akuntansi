@@ -1,5 +1,5 @@
 import { StockTransaction } from "../models/stockTransactionSchema.js";
-import { Item } from "../models/item.js";
+import { Item } from "../models/Item.js";
 
 export const inventoryService = {
   /**

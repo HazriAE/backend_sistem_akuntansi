@@ -16,8 +16,8 @@ const labaRugiMultipleStepController = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     
-    const periodeAwal = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), 0, 1);
-    const periodeAkhir = endDate ? new Date(endDate) : new Date();
+    const periodeAwal = startDate ? new Date(startDate) : new Date(2025, 0, 2);
+    const periodeAkhir = endDate ? new Date(endDate) : new Date(2025, 2, 32);
 
     const filter = {
       status: 'posted',

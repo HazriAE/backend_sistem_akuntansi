@@ -12,6 +12,7 @@ import salesRoutes from "./routes/salesRoutes.js"
 import purchaseRoutes from "./routes/purchaseRoutes.js"
 import supplierRoutes from "./routes/supplierRoutes.js"
 import itemRoutes from "./routes/inventoryRoutes.js"
+import dashboardRoutes from "./routes/dashboardRoutes.js"
 
 const app = express()
 
@@ -28,6 +29,7 @@ app.use("/api", salesRoutes)
 app.use("/api", purchaseRoutes)
 app.use("/api", supplierRoutes)
 app.use("/api", itemRoutes)
+app.use("/api/dashboard", dashboardRoutes)
 
 
 // if (process.env.NODE_ENV === 'development') {

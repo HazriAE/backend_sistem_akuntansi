@@ -1,5 +1,3 @@
-
-
 export function tentukanKategoriArusKas(akunPasangan) {
   if (!akunPasangan || akunPasangan.length === 0) return 'OPERASI';
 
@@ -9,41 +7,60 @@ export function tentukanKategoriArusKas(akunPasangan) {
     const kodeAkun = item.akun.kodeAkun;
     const tipeAkun = item.akun.tipeAkun;
 
+    // ============================================
     // 1. ARUS KAS OPERASI (Kegiatan Rutin)
-    // Kode 4-xxxx (Pendapatan) → Kas bertambah = Penerimaan dari Pelanggan
+    // ============================================
+    
+    // Pendapatan (4-xxxx) → Penerimaan dari pelanggan
     if (kodeAkun.startsWith('4-')) {
       return 'OPERASI';
     }
 
-    // Kode 5-xxxx (Beban) → Pembayaran operasional
-    if (kodeAkun.startsWith('5-1001')) return 'OPERASI'; // Beban Pokok Penjualan
+    // Beban Operasional (5-xxxx)
+    if (kodeAkun.startsWith('5-1001')) return 'OPERASI'; // HPP
     if (kodeAkun.startsWith('5-1002')) return 'OPERASI'; // Beban Usaha
-    if (kodeAkun.startsWith('5-1004')) return 'OPERASI'; // Beban Pajak
+    if (kodeAkun.startsWith('5-1003')) return 'OPERASI'; // Beban Lain-lain
+    if (kodeAkun.startsWith('5-1004')) return 'OPERASI'; // Beban Pajak Final
+    if (kodeAkun.startsWith('5-1006')) return 'OPERASI'; // Beban Keuangan
+    if (kodeAkun.startsWith('5-1007')) return 'OPERASI'; // Beban Pajak Penghasilan
 
-    // Kode 2-1xxx (Utang Lancar) → Pelunasan Utang Supplier
-    if (kodeAkun.startsWith('2-1') && kodeAkun.match(/2-11\d{2}/)) {
-      return 'OPERASI';
+    // Aset Lancar (1-11xx) - kecuali Kas
+    if (kodeAkun.startsWith('1-11') && kodeAkun !== '1-1101') {
+      return 'OPERASI'; // Piutang, Persediaan, Pajak/Biaya Dibayar Dimuka, dll
     }
 
-    // Kode 1-1xxx (Aset Lancar selain Kas) → Penerimaan Pelunasan dari Customer
-    if (kodeAkun.startsWith('1-1') && kodeAkun.match(/1-11\d{2}/)) {
-      return 'OPERASI';
+    // Liabilitas Lancar (2-11xx)
+    if (kodeAkun.startsWith('2-11')) {
+      return 'OPERASI'; // Utang Usaha, Beban Akrual, Utang Pajak, dll
     }
 
-    // 2. ARUS KAS INVESTASI (Jangka Panjang)
-    // Kode 1-2xxx (Aset Tidak Lancar) → Pembelian/Penjualan Aset
+    // Liabilitas Imbalan Kerja Jangka Pendek
+    if (kodeAkun === '2-1106') return 'OPERASI';
+
+    // ============================================
+    // 2. ARUS KAS INVESTASI (Aset Jangka Panjang)
+    // ============================================
+    
+    // Aset Tidak Lancar (1-2xxx) - Properti, Aset Tetap, dll
     if (kodeAkun.startsWith('1-2')) {
       return 'INVESTASI';
     }
 
-    // 3. ARUS KAS PENDANAAN (Modal & Utang Bank)
-    // Kode 3-xxxx (Ekuitas) → Setoran Modal / Pembayaran Dividen
-    if (kodeAkun.startsWith('3-1101')) return 'PENDANAAN'; // Modal Saham
-    if (kodeAkun.startsWith('3-1104')) return 'PENDANAAN'; // Saldo Laba (Dividen)
+    // Bagian atas Laba/Rugi Entitas Asosiasi
+    if (kodeAkun === '5-1005') return 'INVESTASI';
 
-    // Kode 2-2xxx (Utang Jangka Panjang) → Pembayaran Cicilan / Utang Bank
-    if (kodeAkun.startsWith('2-2')) {
+    // ============================================
+    // 3. ARUS KAS PENDANAAN (Modal & Pinjaman)
+    // ============================================
+    
+    // Ekuitas (3-xxxx) - Modal, Dividen, dll
+    if (kodeAkun.startsWith('3-')) {
       return 'PENDANAAN';
+    }
+
+    // Liabilitas Jangka Panjang (2-2xxx)
+    if (kodeAkun.startsWith('2-2')) {
+      return 'PENDANAAN'; // Utang Bank, Liabilitas Sewa JP, dll
     }
   }
 

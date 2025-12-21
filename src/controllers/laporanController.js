@@ -571,7 +571,7 @@ export const laporanController = {
         // Hitung mutasi
         let totalKredit = 0;
         let totalDebit = 0;
-        const mutasi = [];
+        const mutasiDetail = [];
 
         jurnal.forEach(j => {
           j.items.forEach(item => {
@@ -582,15 +582,14 @@ export const laporanController = {
               totalKredit += kredit;
               totalDebit += debit;
 
-              // Track mutasi detail
+              // Track mutasi detail - sesuaikan dengan yang frontend butuhkan
               if (kredit > 0 || debit > 0) {
-                mutasi.push({
+                mutasiDetail.push({
                   tanggal: j.tanggal,
                   nomorJurnal: j.nomorJurnal,
-                  deskripsi: j.deskripsi,
-                  jenisTransaksi: j.jenisTransaksi,
-                  penambahan: kredit,
-                  pengurangan: debit
+                  keterangan: j.deskripsi || j.keterangan || '-', // Frontend expect "keterangan"
+                  debit: debit,     // Frontend expect "debit"
+                  kredit: kredit    // Frontend expect "kredit"
                 });
               }
             }
@@ -612,7 +611,7 @@ export const laporanController = {
           pengurangan: totalDebit,
           mutasiNet,
           saldoAkhir: saldoAkhirPeriode,
-          mutasiDetail: mutasi
+          mutasiDetail: mutasiDetail  // Ubah dari "mutasi" ke "mutasiDetail"
         });
       }
 
@@ -654,13 +653,21 @@ export const laporanController = {
     try {
       const { startDate, endDate } = req.query;
 
+      // Validasi dan set default periode
       const periodeAwal = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), 0, 1);
       const periodeAkhir = endDate ? new Date(endDate) : new Date();
 
-      // Get akun kas (1-1101 atau kategori kas)
+      // Validasi tanggal
+      if (periodeAwal > periodeAkhir) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tanggal awal tidak boleh lebih besar dari tanggal akhir'
+        });
+      }
+
+      // Get akun kas - lebih spesifik
       const akunKas = await Akun.findOne({
-        kodeAkun: { $regex: '^1-11' },
-        kategori: 'kas',
+        kodeAkun: '1-1101',
         aktif: true
       });
 
@@ -669,6 +676,23 @@ export const laporanController = {
           success: false,
           message: 'Akun kas tidak ditemukan'
         });
+      }
+
+      // Hitung saldo kas awal periode
+      const jurnalSebelumPeriode = await JurnalEntry.find({
+        status: 'posted',
+        tanggal: { $lt: periodeAwal }
+      }).populate('items.akun', 'kodeAkun');
+
+      let kasAwal = akunKas.saldoAwal;
+      
+      for (let jurnal of jurnalSebelumPeriode) {
+        const itemKas = jurnal.items.find(item => 
+          item.akun && item.akun.kodeAkun === '1-1101'
+        );
+        if (itemKas) {
+          kasAwal += (itemKas.debit || 0) - (itemKas.kredit || 0);
+        }
       }
 
       // Filter jurnal dalam periode
@@ -693,7 +717,7 @@ export const laporanController = {
       for (let jurnal of semuaJurnal) {
         // Cek apakah jurnal melibatkan kas
         const itemKas = jurnal.items.find(item => 
-          item.akun && item.akun._id.toString() === akunKas._id.toString()
+          item.akun && item.akun.kodeAkun === '1-1101'
         );
 
         if (!itemKas) continue;
@@ -702,9 +726,12 @@ export const laporanController = {
         const kasKredit = itemKas.kredit || 0;
         const netKas = kasDebit - kasKredit; // positif = kas masuk, negatif = kas keluar
 
+        // Skip jika tidak ada perubahan kas
+        if (netKas === 0) continue;
+
         // Analisis akun pasangan (akun selain kas)
         const akunPasangan = jurnal.items.filter(item => 
-          item.akun && item.akun._id.toString() !== akunKas._id.toString()
+          item.akun && item.akun.kodeAkun !== '1-1101'
         );
 
         // Tentukan kategori arus kas berdasarkan kode akun pasangan
@@ -719,7 +746,8 @@ export const laporanController = {
           net: netKas,
           akunTerkait: akunPasangan.map(item => ({
             kodeAkun: item.akun.kodeAkun,
-            namaAkun: item.akun.namaAkun
+            namaAkun: item.akun.namaAkun,
+            jumlah: (item.debit || 0) || (item.kredit || 0)
           }))
         };
 
@@ -733,14 +761,20 @@ export const laporanController = {
         }
       }
 
-      // Hitung total per kategori
-      const totalOperasi = arusKasOperasi.reduce((sum, t) => sum + t.net, 0);
-      const totalInvestasi = arusKasInvestasi.reduce((sum, t) => sum + t.net, 0);
-      const totalPendanaan = arusKasPendanaan.reduce((sum, t) => sum + t.net, 0);
+      // Helper function untuk hitung total
+      const hitungTotal = (transaksiList) => ({
+        totalMasuk: transaksiList.reduce((sum, t) => sum + t.masuk, 0),
+        totalKeluar: transaksiList.reduce((sum, t) => sum + t.keluar, 0),
+        net: transaksiList.reduce((sum, t) => sum + t.net, 0)
+      });
 
-      // Hitung saldo kas
-      const kasAwal = akunKas.saldoAwal;
-      const perubahanKas = totalOperasi + totalInvestasi + totalPendanaan;
+      // Hitung total per kategori
+      const totalOperasi = hitungTotal(arusKasOperasi);
+      const totalInvestasi = hitungTotal(arusKasInvestasi);
+      const totalPendanaan = hitungTotal(arusKasPendanaan);
+
+      // Hitung perubahan dan saldo akhir kas
+      const perubahanKas = totalOperasi.net + totalInvestasi.net + totalPendanaan.net;
       const kasAkhir = kasAwal + perubahanKas;
 
       res.json({
@@ -753,40 +787,35 @@ export const laporanController = {
           kasAwal,
           arusKasOperasi: {
             transaksi: arusKasOperasi,
-            totalMasuk: arusKasOperasi.reduce((sum, t) => sum + t.masuk, 0),
-            totalKeluar: arusKasOperasi.reduce((sum, t) => sum + t.keluar, 0),
-            net: totalOperasi
+            ...totalOperasi
           },
           arusKasInvestasi: {
             transaksi: arusKasInvestasi,
-            totalMasuk: arusKasInvestasi.reduce((sum, t) => sum + t.masuk, 0),
-            totalKeluar: arusKasInvestasi.reduce((sum, t) => sum + t.keluar, 0),
-            net: totalInvestasi
+            ...totalInvestasi
           },
           arusKasPendanaan: {
             transaksi: arusKasPendanaan,
-            totalMasuk: arusKasPendanaan.reduce((sum, t) => sum + t.masuk, 0),
-            totalKeluar: arusKasPendanaan.reduce((sum, t) => sum + t.keluar, 0),
-            net: totalPendanaan
+            ...totalPendanaan
           },
           kenaikanPenurunanKas: perubahanKas,
           kasAkhir,
           summary: {
-            totalKasMasuk: arusKasOperasi.reduce((sum, t) => sum + t.masuk, 0) +
-                          arusKasInvestasi.reduce((sum, t) => sum + t.masuk, 0) +
-                          arusKasPendanaan.reduce((sum, t) => sum + t.masuk, 0),
-            totalKasKeluar: arusKasOperasi.reduce((sum, t) => sum + t.keluar, 0) +
-                          arusKasInvestasi.reduce((sum, t) => sum + t.keluar, 0) +
-                          arusKasPendanaan.reduce((sum, t) => sum + t.keluar, 0)
-          }
+            totalKasMasuk: totalOperasi.totalMasuk + totalInvestasi.totalMasuk + totalPendanaan.totalMasuk,
+            totalKasKeluar: totalOperasi.totalKeluar + totalInvestasi.totalKeluar + totalPendanaan.totalKeluar,
+            jumlahTransaksi: arusKasOperasi.length + arusKasInvestasi.length + arusKasPendanaan.length
+          },
+          // Validasi saldo
+          valid: Math.abs((kasAwal + perubahanKas) - kasAkhir) < 0.01
         }
       });
     } catch (error) {
+      console.error('Error pada laporan arus kas:', error);
       res.status(500).json({
         success: false,
-        message: error.message
+        message: 'Terjadi kesalahan saat membuat laporan arus kas',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-  },
+  }
 
 };
